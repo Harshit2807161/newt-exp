@@ -23,7 +23,6 @@ from common.world_model import WorldModel
 from config import Config, split_by_rank, parse_cfg
 from envs import make_env
 from tdmpc2 import TDMPC2
-from bc import BC
 from trainer import Trainer
 
 torch.backends.cudnn.benchmark = True
@@ -102,10 +101,7 @@ def train(rank: int, cfg: dict, buffer: Buffer):
 		if cfg.world_size > 1:
 			model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[cfg.rank])
 			model = DDPWrapper(model)
-		if cfg.bc_baseline:
-			agent = BC(model, cfg)
-		else:
-			agent = TDMPC2(model, cfg)
+		agent = TDMPC2(model, cfg)
 		return agent
 
 	trainer = Trainer(

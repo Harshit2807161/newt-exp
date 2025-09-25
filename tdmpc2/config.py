@@ -24,7 +24,7 @@ class Config:
 	episodic: bool = False
 	num_envs: int = 10
 	env_mode: str = "async"
-	tasks_fp: str = "/data/nihansen/code/tdmpc25/data/tasks.json"
+	tasks_fp: str = "/path/to/your/tasks.json"
 
 	# evaluation
 	checkpoint: Optional[str] = None
@@ -95,12 +95,9 @@ class Config:
 	simnorm_dim: int = 8
 	disable_task_emb: bool = False
 
-	# bc baseline
-	bc_baseline: bool = False
-
 	# logging
-	wandb_project: str = "tdmpc3"
-	wandb_entity: str = "nicklashansen"
+	wandb_project: str = "project"
+	wandb_entity: str = "entity"
 	wandb_silent: bool = False
 	enable_wandb: bool = True
 
@@ -115,7 +112,7 @@ class Config:
 	save_agent: bool = True
 	save_freq: Optional[int] = None
 	save_buffer: bool = False
-	data_dir: str = "/data/nihansen/code/tdmpc25/data"
+	data_dir: str = "/path/to/your/data"
 	seed: int = 1
 
 	# convenience (filled at runtime)
@@ -154,8 +151,6 @@ def parse_cfg(cfg):
 	cfg.bin_size = (cfg.vmax - cfg.vmin) / (cfg.num_bins-1)  # Bin size for discrete regression
 
 	# Model size
-	if cfg.task != 'soup' and not cfg.finetune and cfg.model_size is None:
-		cfg.model_size = 'B'
 	if cfg.get('model_size', None) is not None:
 		assert cfg.model_size in MODEL_SIZE.keys(), \
 			f'Invalid model size {cfg.model_size}. Must be one of {list(MODEL_SIZE.keys())}'
@@ -172,40 +167,6 @@ def parse_cfg(cfg):
 		print(colored(f'Number of tasks in soup: {cfg.num_global_tasks}', 'green', attrs=['bold']))
 	cfg.eval_freq = 20 * 500 * cfg.num_envs
 	cfg.save_freq = 5 * cfg.eval_freq
-	if cfg.use_demos and cfg.checkpoint is None:
-		# Warmup LR when pretraining
-		cfg.lr_schedule = "warmup"
-	if not (cfg.task == 'soup' and cfg.use_demos and cfg.demo_steps > 0 and cfg.num_pi_trajs > 0):
-		cfg.constrained_planning = False
-	if cfg.finetune:
-		assert cfg.checkpoint is not None, "Checkpoint must be specified for finetuning."
-		cfg.steps = 1 #100_000
-		cfg.buffer_size = 100_000
-		cfg.eval_episodes = 1 #10 if cfg.num_envs == 1 else 1
-		cfg.use_demos = False
-		cfg.env_mode = 'sync'
-		cfg.save_video = False #True
-	elif cfg.bc_baseline and cfg.task != 'soup':
-		cfg.task_dim = 0
-		cfg.prior_coef = 0
-		cfg.steps = 1
-		cfg.horizon = 2
-		cfg.buffer_size = 50_000
-		cfg.eval_episodes = 2
-		cfg.env_mode = 'sync'
-		cfg.save_video = False
-		cfg.save_agent = False
-		cfg.demo_steps = 20_000
-	elif cfg.task != 'soup':
-		cfg.task_dim = 0
-		cfg.prior_coef = 0
-		cfg.steps = 10_000_000 if cfg.task.startswith('atari-') else 5_000_000
-		cfg.buffer_size = 1_000_000
-		cfg.eval_episodes = 1
-		cfg.save_freq *= 2
-		cfg.use_demos = False
-		cfg.env_mode = 'sync'
-		cfg.save_video = True
 
 	# Load task embeddings
 	with open(cfg.tasks_fp, "r") as f:

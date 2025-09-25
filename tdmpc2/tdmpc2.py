@@ -11,7 +11,7 @@ from common.layers import api_model_conversion, legacy_api_model_conversion
 
 class TDMPC2(torch.nn.Module):
 	"""
-	TD-MPC2 agent. Implements training + inference.
+	Newt-based TD-MPC2 agent. Implements training + inference.
 	Can be used for both single-task and multi-task experiments,
 	and supports both state and pixel observations.
 	"""

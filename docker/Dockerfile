@@ -1,7 +1,7 @@
 ##################################################
 # Build instructions:                            #
-# docker build . -t nicklashansen/tdmpc25:1.0.0  #
-# docker push nicklashansen/tdmpc25:1.0.0        #
+# docker build . -t <user>/newt:1.0.0            #
+# docker push <user>/newt:1.0.0                  #
 ##################################################
 
 # base image
@@ -41,12 +41,9 @@ RUN pip install --no-cache-dir \
 # download physx GPU binary via sapien
 RUN python -c "exec('import sapien.physx as physx;\ntry:\n  physx.enable_gpu()\nexcept:\n  pass;')"
 
-# copy maniskill assets
-COPY .maniskill /root/.maniskill
-
 # misc environment variables for convenience
 ENV TORCH_DISTRIBUTED_TIMEOUT=1800
 ENV MS_SKIP_ASSET_DOWNLOAD_PROMPT=1
 
 # success!
-RUN echo "Successfully built TD-MPC2.5 Docker image!"
+RUN echo "Successfully built Docker image!"

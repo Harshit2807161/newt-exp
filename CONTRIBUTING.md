@@ -1,6 +1,8 @@
-# Contributing to TD-MPC2
+# Contributing
 We want to make contributing to this repository as easy and transparent as
-possible.
+possible. However, please understand that we will not be able to accept any
+pull requests while the submission is under review for publication. We will
+be happy to review and accept contributions after the paper is accepted.
 
 ## Pull requests
 We actively welcome your pull requests.
@@ -16,5 +18,5 @@ We use GitHub issues to track public bugs. Please ensure your description is
 clear and has sufficient instructions to be able to reproduce the issue.
 
 ## License
-By contributing to TD-MPC2, you agree that your contributions will be licensed
-under the `LICENSE` file in the root directory of this source tree.
+By contributing to this repository, you agree that your contributions will be
+licensed under the `LICENSE` file in the root directory of this source tree.

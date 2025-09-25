@@ -48,16 +48,12 @@ class WorldModel(nn.Module):
 		for i in range(cfg.num_q):
 			init.zero_(self._Qs.online._Qs[i][-1].weight)
 			init.zero_(self._Qs.target._Qs[i][-1].weight)
-		# if cfg.obs == 'rgb':
-			# breakpoint()
-			# pass
-			# init.zero_(self._encoder['rgb'][-2].weight)
 		self._Qs.hard_update_target()
 		self.register_buffer("log_std_min", torch.tensor(cfg.log_std_min))
 		self.register_buffer("log_std_dif", torch.tensor(cfg.log_std_max) - self.log_std_min)
 
 	def __repr__(self):
-		repr = 'TD-MPC2 World Model\n'
+		repr = 'Newt World Model\n'
 		modules = ['Encoder', 'Dynamics', 'Reward', 'Policy prior', 'Q-functions']
 		for i, m in enumerate([self._encoder, self._dynamics, self._reward, self._pi, self._Qs.online]):
 			params = "{:,}".format(sum(p.numel() for p in m.parameters() if p.requires_grad))

@@ -9,7 +9,7 @@ from torchrl.data.replay_buffers.samplers import SliceSampler
 
 class Buffer():
 	"""
-	Replay buffer for TD-MPC2 training. Based on torchrl.
+	Replay buffer for Newt training. Based on torchrl.
 	Uses CUDA memory if available, and CPU memory otherwise.
 	"""
 

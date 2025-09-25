@@ -2,7 +2,7 @@ import torch.nn as nn
 
 
 def weight_init(m):
-	"""Custom weight initialization for TD-MPC2."""
+	"""Custom weight initialization for Newt."""
 	if isinstance(m, nn.Linear):
 		nn.init.trunc_normal_(m.weight, std=0.02)
 		if m.bias is not None:

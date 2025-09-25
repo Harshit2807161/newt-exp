@@ -1,33 +1,3 @@
-# Logging
-tdmpc2/logs/
-tdmpc2/outputs/
-tdmpc2/wandb/
-
-# NH
-plots/figures/
-plots/output/
-losses.pt
-losses-*.pt
-tasks-*.pt
-checkpoints/
-data/*.png
-data/*.pt
-_data/
-data-128px/
-data-outdated/
-generate_demos_*.sh
-pu.sh
-
-# VSCode
-settings.json
-
-# Docker
-docker/.maniskill
-
-# HPC
-nautilus/*.yaml
-*.key
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

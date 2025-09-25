@@ -18,7 +18,7 @@ from envs.atari import make_env as make_atari_env
 
 def make_env(cfg):
 	"""
-	Make an environment for TD-MPC2 experiments.
+	Make an environment for Newt experiments.
 	"""
 	gym.logger.set_level(40)
 	if not cfg.child_env:

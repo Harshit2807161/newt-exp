@@ -160,7 +160,7 @@ class VectorizedMultitaskWrapper(gym.Wrapper):
 
 
 def make_vectorized_multitask_env(cfg, make_fn):
-	"""Make a vectorized multi-task environment for TD-MPC2 experiments."""
+	"""Make a vectorized multi-task environment for Newt experiments."""
 	print(f'[Rank {cfg.rank}] Creating multi-task environment with tasks: {cfg.tasks}')
 	env = VectorizedMultitaskWrapper(cfg, make_fn)
 	if cfg.obs == 'rgb':

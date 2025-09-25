@@ -1,4 +1,4 @@
-name: tdmpc25
+name: newt
 channels:
   - conda-forge
   - defaults
@@ -39,7 +39,3 @@ dependencies:
     - tqdm
     - pandas
     - wandb
-    ####################
-    # MyoSuite:
-    # - myosuite
-    ####################

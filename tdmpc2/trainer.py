@@ -21,7 +21,7 @@ def empty_metrics():
 
 
 class Trainer():
-	"""Trainer class for multi-task online TD-MPC2 experiments."""
+	"""Trainer class for MMBench experiments."""
 
 	def __init__(self, cfg, env, agent, buffer, logger):
 		self.cfg = cfg
@@ -172,7 +172,7 @@ class Trainer():
 		return td
 	
 	def train(self):
-		"""Train a TD-MPC2 agent."""
+		"""Train a Newt agent."""
 		# Load demonstrations
 		use_demos = self.cfg.get('use_demos', False)
 		
@@ -225,11 +225,6 @@ class Trainer():
 				if self.cfg.task == 'soup':
 					self.logger.pprint_multitask(eval_metrics, self.cfg)
 				self.logger.log(eval_metrics, 'eval')
-
-				# Exit if BC
-				if self.cfg.bc_baseline:
-					print('BC baseline complete, exiting.')
-					exit(0)
 
 				# Save agent
 				if self._step % self.cfg.save_freq == 0 and self._step > 0:
