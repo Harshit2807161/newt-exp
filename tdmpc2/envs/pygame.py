@@ -26,14 +26,8 @@ PYGAME_TASKS = {
 	'pygame-point-maze-var3': games.PointMazeVariant3Env,
 	# below are reserved for testing
 	'pygame-point-maze-var4': games.PointMazeVariant4Env,
-	'pygame-point-maze-var5': games.PointMazeVariant5Env,
-	'pygame-point-maze-var6': games.PointMazeVariant6Env,
-	'pygame-point-maze-var7': games.PointMazeVariant7Env,
-	'pygame-point-maze-var8': games.PointMazeVariant8Env,
 	'pygame-reacher-easy': games.ReacherEasyEnv,
 	'pygame-reacher-hard': games.ReacherHardEnv,
-	'pygame-reacher-var1': games.ReacherVar1Env,
-	'pygame-reacher-var2': games.ReacherVar2Env,
 }
 
 
@@ -43,8 +37,6 @@ class PygameWrapper(gym.Wrapper):
 		self.env = env
 		self.cfg = cfg
 		if cfg.obs == 'rgb':
-			# self.observation_space = gym.spaces.Box(
-			# 	low=0, high=255, shape=(3, cfg.render_size, cfg.render_size), dtype=np.uint8)
 			self.observation_space = gym.spaces.Dict({
 				'rgb': gym.spaces.Box(
 					low=0, high=255, shape=(3, self.cfg.render_size, self.cfg.render_size), dtype=np.uint8),
@@ -118,7 +110,7 @@ class PygameWrapper(gym.Wrapper):
 
 def make_env(cfg):
 	"""
-	Make Pygame environment.
+	Make Pygame (MiniArcade) environment.
 	"""
 	if not cfg.task in PYGAME_TASKS:
 		raise ValueError('Unknown task:', cfg.task)

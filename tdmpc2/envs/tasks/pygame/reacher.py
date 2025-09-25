@@ -270,18 +270,3 @@ class ReacherHardEnv(ReacherEnv):
 
     def __init__(self):
         super().__init__(target_size_m=0.025)
-
-
-class ReacherVar1Env(ReacherEnv):
-    """Long L1, short L2."""
-
-    def __init__(self):
-        super().__init__(l1_m=0.13, l2_m=0.09)
-
-
-class ReacherVar2Env(ReacherEnv):
-    """Short L1, long L2."""
-
-    def __init__(self):
-        super().__init__(l1_m=0.09, l2_m=0.13)
-

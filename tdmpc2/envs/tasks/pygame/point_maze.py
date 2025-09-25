@@ -69,30 +69,6 @@ class PointMazeEnv(gym.Env):
                 [1, 0, 0, 0, 1],
                 [1, 1, 0, 1, 1],
             ], dtype=np.int32),
-            # Easy
-            np.array([
-                [0, 1, 0, 1, 0],
-                [0, 0, 0, 0, 0],
-                [1, 0, 0, 0, 1],
-                [0, 0, 0, 0, 0],
-                [0, 1, 0, 1, 0],
-            ], dtype=np.int32),
-            # Grid
-            np.array([
-                [1, 0, 1, 0, 1],
-                [0, 0, 0, 0, 0],
-                [1, 0, 1, 0, 1],
-                [0, 0, 0, 0, 0],
-                [1, 0, 1, 0, 1],
-            ], dtype=np.int32),
-            # Maze 4
-            np.array([
-                [1, 1, 1, 0, 1],
-                [0, 0, 1, 0, 0],
-                [1, 0, 0, 0, 1],
-                [1, 0, 1, 0, 1],
-                [0, 0, 0, 0, 1],
-            ], dtype=np.int32),
         ]
         self.grid_id = grid_id
 
@@ -503,23 +479,3 @@ class PointMazeVariant3Env(PointMazeEnv):
 class PointMazeVariant4Env(PointMazeEnv):
     def __init__(self, max_episode_steps=200):
         super().__init__(max_episode_steps=max_episode_steps, grid_id=4)
-
-
-class PointMazeVariant5Env(PointMazeEnv):
-    def __init__(self, max_episode_steps=200):
-        super().__init__(max_episode_steps=max_episode_steps, grid_id=5)
-
-
-class PointMazeVariant6Env(PointMazeEnv):
-    def __init__(self, max_episode_steps=200):
-        super().__init__(max_episode_steps=max_episode_steps, grid_id=6)
-
-
-class PointMazeVariant7Env(PointMazeEnv):
-    def __init__(self, max_episode_steps=200):
-        super().__init__(max_episode_steps=max_episode_steps, grid_id=7)
-
-
-class PointMazeVariant8Env(PointMazeEnv):
-    def __init__(self, max_episode_steps=200):
-        super().__init__(max_episode_steps=max_episode_steps, grid_id=0)

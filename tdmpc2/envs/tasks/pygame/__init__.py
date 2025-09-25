@@ -12,5 +12,5 @@ from envs.tasks.pygame.coconut_dodge import CoconutDodgeEnv
 from envs.tasks.pygame.cartpole import CartpoleBalanceEnv, CartpoleSwingupEnv, CartpoleBalanceSparseEnv, \
     CartpoleSwingupSparseEnv, CartpoleTremorEnv
 from envs.tasks.pygame.point_maze import PointMazeVariant1Env, PointMazeVariant2Env, PointMazeVariant3Env, \
-    PointMazeVariant4Env, PointMazeVariant5Env, PointMazeVariant6Env, PointMazeVariant7Env, PointMazeVariant8Env
-from envs.tasks.pygame.reacher import ReacherEasyEnv, ReacherHardEnv, ReacherVar1Env, ReacherVar2Env
+    PointMazeVariant4Env
+from envs.tasks.pygame.reacher import ReacherEasyEnv, ReacherHardEnv
