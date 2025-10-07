@@ -21,7 +21,7 @@ dependencies:
     - hydra-submitit-launcher
     - submitit
     - omegaconf
-    - git+https://github.com/Farama-Foundation/Metaworld.git@185775b1ac9ed505bfa89f55c643bd63dbaaa5f0
+    - git+https://github.com/nicklashansen/metaworld.git
     - mani_skill-nightly
     - moviepy
     - mujoco

@@ -1,7 +1,7 @@
 ##################################################
 # Build instructions:                            #
-# docker build . -t <user>/newt:1.0.0            #
-# docker push <user>/newt:1.0.0                  #
+# docker build . -t nicklashansen/newt:1.0.0     #
+# docker push nicklashansen/newt:1.0.0           #
 ##################################################
 
 # base image
@@ -36,14 +36,17 @@ RUN echo "cd /root" >> /root/.bashrc
 
 # pip packages
 RUN pip install --no-cache-dir \
-    'ale_py==0.10'
+    'ale_py==0.10' gpustat
 
 # download physx GPU binary via sapien
 RUN python -c "exec('import sapien.physx as physx;\ntry:\n  physx.enable_gpu()\nexcept:\n  pass;')"
+
+# copy maniskill assets
+COPY .maniskill /root/.maniskill
 
 # misc environment variables for convenience
 ENV TORCH_DISTRIBUTED_TIMEOUT=1800
 ENV MS_SKIP_ASSET_DOWNLOAD_PROMPT=1
 
 # success!
-RUN echo "Successfully built Docker image!"
+RUN echo "Successfully built Newt Docker image!"
