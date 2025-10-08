@@ -235,23 +235,22 @@ class Trainer():
 				ep_reward = torch.zeros((self.cfg.num_envs,))
 				ep_len = torch.zeros((self.cfg.num_envs,), dtype=torch.int32)
 				done = torch.full((self.cfg.num_envs,), True, dtype=torch.bool)
-				action_infos = []
 				self._next_action = None
 				self._tds[ep_len] = self.to_td(obs)
 
 			# Collect experience
 			if self.cfg.finetune:
 				torch.compiler.cudagraph_mark_step_begin()
-				action, action_info = self.agent(obs, t0=done, step=self._step, task=self._tasks, mpc=True)
+				action = self.agent(obs, t0=done, step=self._step, task=self._tasks, mpc=True)
 			elif use_demos and self.cfg.demo_steps > 0:
 				use_mpc = self._step >= self.cfg.seeding_coef * self._update_freq
 				torch.compiler.cudagraph_mark_step_begin()
-				action, action_info = self.agent(obs, t0=done, step=self._step, task=self._tasks, mpc=use_mpc)
+				action = self.agent(obs, t0=done, step=self._step, task=self._tasks, mpc=use_mpc)
 			elif self._step >= self.cfg.seeding_coef * self._update_freq:
 				torch.compiler.cudagraph_mark_step_begin()
-				action, action_info = self.agent(obs, t0=done, step=self._step, task=self._tasks)
+				action = self.agent(obs, t0=done, step=self._step, task=self._tasks)
 			else:
-				action, action_info = self.env.rand_act(), None
+				action = self.env.rand_act(), None
 
 			obs, reward, terminated, truncated, info = self.env.step(action)
 			assert not terminated.any(), \
@@ -259,7 +258,6 @@ class Trainer():
 			ep_reward += reward
 			ep_len += 1
 			done = terminated | truncated
-			action_infos.append(action_info)
 			self._step += self.cfg.num_envs * self.cfg.world_size
 
 			# Store experience
@@ -298,8 +296,6 @@ class Trainer():
 					self._ep_idx += self._eps_per_update_freq
 					for key in ['episode_reward', 'episode_success', 'episode_score', 'episode_length', 'episode_terminated']:
 						train_metrics[key] = torch.tensor(train_metrics[key], dtype=torch.float32).nanmean().item()
-					if not (None in action_infos):
-						train_metrics.update(torch.stack(action_infos).mean())
 					train_metrics.update(self.common_metrics())
 					self.logger.log(train_metrics, 'train')
 					train_metrics = defaultdict(list)

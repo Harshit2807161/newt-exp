@@ -13,6 +13,7 @@ dependencies:
     - gymnasium==0.29.1
     - gymnasium[atari,accept-rom-license]
     - gymnasium[box2d]
+    - gpustat
     - ffmpeg
     - imageio
     - imageio-ffmpeg
@@ -37,5 +38,6 @@ dependencies:
     - kornia
     - termcolor
     - tqdm
+    - seaborn
     - pandas
     - wandb

@@ -7,7 +7,7 @@ from tensordict import TensorDict
 
 class WorldModel(nn.Module):
 	"""
-	TD-MPC2 implicit world model architecture.
+	TD-MPC2 self-predictive world model architecture.
 	Can be used for both single-task and multi-task experiments.
 	"""
 
@@ -21,14 +21,9 @@ class WorldModel(nn.Module):
 		else:
 			self._task_emb = nn.Embedding(len(cfg.task_embeddings), cfg.task_dim) if cfg.task_dim > 0 else None
 			if cfg.task == 'soup':
-				if cfg.disable_task_emb:
-					self._task_emb._parameters['weight'] = torch.zeros_like(self._task_emb._parameters['weight'])
-					if cfg.rank == 0:
-						print('Warning: Task embeddings are DISABLED by setting them to all zeros.')
-				else:
-					self._task_emb._parameters['weight'] = torch.tensor(self.cfg.task_embeddings, dtype=torch.float32)
-					if cfg.rank == 0:
-						print('Using pre-computed language embeddings.')
+				self._task_emb._parameters['weight'] = torch.tensor(self.cfg.task_embeddings, dtype=torch.float32)
+				if cfg.rank == 0:
+					print('Using pre-computed language embeddings.')
 		if self._task_emb is not None:
 			self._task_emb.weight.requires_grad = False  # Freeze task embeddings
 		if cfg.finetune:

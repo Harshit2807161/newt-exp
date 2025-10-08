@@ -6,7 +6,7 @@ from tensordict import TensorDict
 
 from common import math
 from common.scale import RunningScale
-from common.layers import api_model_conversion, legacy_api_model_conversion
+from common.layers import api_model_conversion
 
 
 class TDMPC2(torch.nn.Module):
@@ -28,8 +28,8 @@ class TDMPC2(torch.nn.Module):
 			{'params': self.model._reward.parameters()},
 			{'params': self.model._Qs.online.parameters()},
 			{'params': self.model._pi.parameters()},
-		], lr=self.cfg.lr, capturable=True)
-		self.pi_optim = torch.optim.Adam(self.model._pi.parameters(), lr=self.cfg.lr, eps=1e-5, capturable=True)
+		], lr=self.cfg.lr, fused=True, capturable=True)
+		self.pi_optim = torch.optim.Adam(self.model._pi.parameters(), lr=self.cfg.lr, eps=1e-5, fused=True, capturable=True)
 		if self.cfg.lr_schedule:
 			self.scheduler = math.MultiWarmupConstantLR(
 				[self.optim, self.pi_optim],
@@ -49,18 +49,17 @@ class TDMPC2(torch.nn.Module):
 		self._prev_mean = torch.zeros(self.cfg.num_envs, self.cfg.horizon, self.cfg.action_dim, device=self.device)
 		self.rho = torch.pow(self.cfg.rho, torch.arange(self.cfg.horizon+1, device=self.device))
 		self.rho = self.rho / self.rho.sum()
-		if self.cfg.compile:
-			if self.cfg.rank == 0:
-				print('Compiling methods...')
-			self.pi = torch.compile(self._pi, mode="reduce-overhead")
-			self.sample_pi_trajs = torch.compile(self._sample_pi_trajs, mode="reduce-overhead")
-			self.mppi = torch.compile(self._mppi, mode="reduce-overhead")
-			self.loss_fn = torch.compile(self._loss_fn, mode="reduce-overhead")
-		else:
-			self.pi = self._pi
-			self.sample_pi_trajs = self._sample_pi_trajs
-			self.mppi = self._mppi
-			self.loss_fn = self._loss_fn
+
+		# Compile methods for faster training/inference
+		if self.compile and self.cfg.rank == 0:
+			print('Compiling methods...')
+		self.pi = self._maybe_compile(self._pi)
+		self.sample_pi_trajs = self._maybe_compile(self._sample_pi_trajs)
+		self.mppi = self._maybe_compile(self._mppi)
+		self.loss_fn = self._maybe_compile(self._loss_fn)
+
+	def _maybe_compile(self, fn):
+		return torch.compile(fn, mode="reduce-overhead") if self.cfg.compile else fn
 
 	def save(self, fp):
 		"""
@@ -81,12 +80,9 @@ class TDMPC2(torch.nn.Module):
 		Load a saved state dict from filepath (or dictionary) into current agent.
 
 		Args:
-			fp (str or dict): Filepath or state dict to load.
+			fp (str): Filepath to load state dict from.
 		"""
-		if isinstance(fp, dict):
-			state_dict = fp
-		else:
-			state_dict = torch.load(fp, map_location=torch.get_default_device(), weights_only=False)
+		state_dict = torch.load(fp, map_location=torch.get_default_device(), weights_only=False)
 		state_dict = state_dict["model"] if "model" in state_dict else state_dict
 		
 		# Retain task_emb and action_masks if finetuning
@@ -96,15 +92,8 @@ class TDMPC2(torch.nn.Module):
 			state_dict[prefix+"_action_masks"] = self.model._action_masks
 
 		state_dict = api_model_conversion(self.model.state_dict(), state_dict)
-		try:
-			self.model.load_state_dict(state_dict)
-		except Exception:
-			state_dict = legacy_api_model_conversion(self.model.state_dict(), state_dict)
-			out = self.model.load_state_dict(state_dict)
-			print(out)
-			print('Successfully loaded checkpoint after converting from legacy API.')
-		return
-	
+		self.model.load_state_dict(state_dict)
+
 	@torch.no_grad()
 	def _pi(self, obs, task=None):
 		"""
@@ -141,16 +130,12 @@ class TDMPC2(torch.nn.Module):
 		if mpc:
 			if t0.device != self.device:
 				t0 = t0.to(self.device, non_blocking=True)
-			action, info = self.plan(obs, t0=t0, step=step, eval_mode=eval_mode, task=task)
+			action = self.plan(obs, t0=t0, step=step, eval_mode=eval_mode, task=task)
 		else:
-			action, action_info = self.pi(obs, task)
+			action, info = self.pi(obs, task)
 			if eval_mode:
-				action = action_info["mean"]
-			info = TensorDict({
-				"pi_mean": action_info["mean"].mean(),
-				"pi_std": action_info["log_std"].exp().mean(),
-			})
-		return action.cpu(), info
+				action = info["mean"]
+		return action.cpu()
 	
 	@torch.no_grad()
 	def _estimate_value(self, z, actions, task):
@@ -266,7 +251,7 @@ class TDMPC2(torch.nn.Module):
 			else:
 				num = max(0, step - self.cfg.constraint_start_step)
 				den = max(1, self.cfg.constraint_final_step)
-				w = max(self.cfg.constraint_min_weight, 1.0 - (num / den))
+				w = max(1.0 - (num / den), 0)
 			w = torch.as_tensor(w, device=self.device, dtype=base_mean.dtype).view(1, 1, 1)
 
 			# Linearly annealed mix of policy and base prior
@@ -282,12 +267,7 @@ class TDMPC2(torch.nn.Module):
 		if not eval_mode:
 			action = (action + out_std * torch.randn_like(action)).clamp(-1, 1)
 
-		info = TensorDict({
-			"pi_mean": pi_actions.mean() if self.cfg.num_pi_trajs > 0 else None,
-			"pi_std": pi_actions.std() if self.cfg.num_pi_trajs > 0 else None,
-		})
-
-		return action, info
+		return action
 		
 	def update_pi(self, zs, action, task):
 		"""
@@ -423,7 +403,18 @@ class TDMPC2(torch.nn.Module):
 
 		return total_loss, zs.detach(), info.detach()
 
-	def _update(self, obs, action, reward, task=None):
+	def update(self, buffer):
+		"""
+		Main update function. Corresponds to one iteration of model learning.
+
+		Args:
+			buffer (common.buffer.Buffer): Replay buffer.
+
+		Returns:
+			dict: Dictionary of training statistics.
+		"""
+		obs, action, reward, task = buffer.sample(device=self.device)
+
 		# Prepare for update
 		self.model.train()
 
@@ -461,19 +452,3 @@ class TDMPC2(torch.nn.Module):
 				"lr_pi": self.scheduler.current_lr(1, 0),
 			})
 		return info.detach().mean()
-
-	def update(self, buffer):
-		"""
-		Main update function. Corresponds to one iteration of model learning.
-
-		Args:
-			buffer (common.buffer.Buffer): Replay buffer.
-
-		Returns:
-			dict: Dictionary of training statistics.
-		"""
-		obs, action, reward, task = buffer.sample(device=self.device)
-		kwargs = {}
-		if task is not None:
-			kwargs["task"] = task
-		return self._update(obs, action, reward, **kwargs)

@@ -132,7 +132,6 @@ class Logger:
 		self._seed = cfg.seed
 		self._eval = []
 		print_run(cfg)
-		os.environ["WANDB_SILENT"] = "true" if cfg.wandb_silent else "false"
 		import wandb
 		wandb.init(
 			project=self.project,

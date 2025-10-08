@@ -24,7 +24,7 @@ class Config:
 	episodic: bool = False
 	num_envs: int = 10
 	env_mode: str = "async"
-	tasks_fp: str = "/path/to/your/tasks.json"
+	tasks_fp: str = "/data/nihansen/code/tdmpc25/data/tasks.json"
 
 	# evaluation
 	checkpoint: Optional[str] = None
@@ -70,13 +70,11 @@ class Config:
 	constrained_planning: bool = True
 	constraint_start_step: int = 2_000_000
 	constraint_final_step: int = 10_000_000
-	constraint_min_weight: float = 0.0
 
 	# actor
 	log_std_min: float = -10
 	log_std_max: float = 2.0
 	entropy_coef: float = 1e-4
-	use_scaled_entropy: bool = True
 
 	# critic
 	num_bins: int = 101
@@ -93,12 +91,10 @@ class Config:
 	task_dim: int = 512
 	num_q: int = 5
 	simnorm_dim: int = 8
-	disable_task_emb: bool = False
 
 	# logging
-	wandb_project: str = "project"
-	wandb_entity: str = "entity"
-	wandb_silent: bool = False
+	wandb_project: str = "tdmpc3"
+	wandb_entity: str = "nicklashansen"
 	enable_wandb: bool = True
 
 	# misc
@@ -112,7 +108,7 @@ class Config:
 	save_agent: bool = True
 	save_freq: Optional[int] = None
 	save_buffer: bool = False
-	data_dir: str = "/path/to/your/data"
+	data_dir: str = "/data/nihansen/code/tdmpc25/data"
 	seed: int = 1
 
 	# convenience (filled at runtime)
