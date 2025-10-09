@@ -294,7 +294,7 @@ class TDMPC2(torch.nn.Module):
 			self.scale.update(qs[0])  # local update
 			if torch.distributed.is_initialized():
 				torch.distributed.all_reduce(self.scale.value, op=torch.distributed.ReduceOp.SUM)
-				self.scale.value /= self.cfg.world_size
+				self.scale.value.div_(self.cfg.world_size)
 		qs = self.scale(qs)
 		maxq_loss = ((-self.cfg.entropy_coef*info["scaled_entropy"] - qs) * self.rho[:, None, None]).sum(dim=(0,2))
 		

@@ -225,6 +225,7 @@ def launch(cfg: Config):
 		'batch_size': cfg.batch_size,
 		'horizon': cfg.horizon,
 		'multiproc': cfg.multiproc,
+		'compile': cfg.compile,
 	}
 	if cfg.use_demos and cfg.no_demo_buffer:
 		buffer = Buffer(**buffer_args)
