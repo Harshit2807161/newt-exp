@@ -126,6 +126,26 @@ def masked_bc_per_timestep(pi_action, action, task, action_masks):
 	return num / den                                     # (T, B)
 
 
+def interp_dist(base_mean, base_std, pi_mean, pi_std, step, start, end):
+	"""
+	Linear interpolation between two Gaussian distributions
+	N(base_mean, base_std) and N(pi_mean, pi_std).
+	"""
+	if step < start:
+		w = 1.0
+	else:
+		num = max(0, step - start)
+		den = max(1, end)
+		w = max(1.0 - (num / den), 0)
+	w = torch.as_tensor(w, device=base_mean.device, dtype=base_mean.dtype).view(1, 1, 1)
+
+	# Linearly annealed mix of policy and base prior
+	mean = w * pi_mean + (1.0 - w) * base_mean
+	std = w * pi_std + (1.0 - w) * base_std
+
+	return mean, std
+
+
 class MultiWarmupConstantLR:
 	"""
 	Linear warmup to each param group's base LR, then hold constant.

@@ -56,6 +56,7 @@ class TDMPC2(torch.nn.Module):
 		self.pi = self._maybe_compile(self._pi)
 		self.sample_pi_trajs = self._maybe_compile(self._sample_pi_trajs)
 		self.mppi = self._maybe_compile(self._mppi)
+		self.pi_loss = self._maybe_compile(self._pi_loss)
 		self.loss_fn = self._maybe_compile(self._loss_fn)
 
 	def _maybe_compile(self, fn):
@@ -153,7 +154,8 @@ class TDMPC2(torch.nn.Module):
 		return G + discount * value
 	
 	@torch.no_grad()
-	def _sample_pi_trajs(self, z, task=None):
+	def _sample_pi_trajs(self, obs, task=None):
+		z = self.model.encode(obs, task)
 		pi_actions = torch.empty(self.cfg.num_envs, self.cfg.horizon, self.cfg.num_pi_trajs, self.cfg.action_dim, device=self.device)
 		_z = z.unsqueeze(1).repeat(1, self.cfg.num_pi_trajs, 1).view(self.cfg.num_envs * self.cfg.num_pi_trajs, -1)
 		_task = task.unsqueeze(1).repeat(1, self.cfg.num_pi_trajs).view(self.cfg.num_envs * self.cfg.num_pi_trajs)
@@ -163,7 +165,7 @@ class TDMPC2(torch.nn.Module):
 			_z = self.model.next(_z, a, _task)
 		a, _ = self.model.pi(_z, _task)
 		pi_actions[:, -1] = a.view(self.cfg.num_envs, self.cfg.num_pi_trajs, self.cfg.action_dim)
-		return pi_actions
+		return pi_actions, z
 	
 	@torch.no_grad()
 	def _mppi(self, z, pi_actions, task, mean, std):
@@ -229,37 +231,20 @@ class TDMPC2(torch.nn.Module):
 			torch.Tensor: Action to take in the environment.
 		"""
 		# Sample policy trajectories
-		z = self.model.encode(obs, task)
-		if self.cfg.num_pi_trajs > 0:
-			pi_actions = self.sample_pi_trajs(z, task)
-		else:
-			pi_actions = None
+		pi_actions, z = self.sample_pi_trajs(obs, task)
 
 		# Initialize state and parameters
 		z = z.unsqueeze(1).repeat(1, self.cfg.num_samples, 1)
 		shifted = torch.cat([self._prev_mean[:, 1:], torch.zeros_like(self._prev_mean[:, :1])], dim=1)
-		base_mean = torch.where(t0.view(self._prev_mean.shape[0], 1, 1), torch.zeros_like(shifted), shifted)
-		base_std = torch.full((self.cfg.num_envs, self.cfg.horizon, self.cfg.action_dim), self.cfg.max_std, device=self.device)
+		mean = torch.where(t0.view(self._prev_mean.shape[0], 1, 1), torch.zeros_like(shifted), shifted)
+		std = torch.full((self.cfg.num_envs, self.cfg.horizon, self.cfg.action_dim), self.cfg.max_std, device=self.device)
 
 		if self.cfg.constrained_planning:
 			# Init planning with policy statistics
-			pi_mean = pi_actions.mean(2)  # (Ne, H, Np, A) -> (Ne, H, A)
+			pi_mean = pi_actions.mean(2)
 			pi_std = pi_actions.std(2).clamp(self.cfg.min_std, self.cfg.max_std)
-
-			if step < self.cfg.constraint_start_step:
-				w = 1.0
-			else:
-				num = max(0, step - self.cfg.constraint_start_step)
-				den = max(1, self.cfg.constraint_final_step)
-				w = max(1.0 - (num / den), 0)
-			w = torch.as_tensor(w, device=self.device, dtype=base_mean.dtype).view(1, 1, 1)
-
-			# Linearly annealed mix of policy and base prior
-			mean = w * pi_mean + (1.0 - w) * base_mean
-			std = w * pi_std + (1.0 - w) * base_std
-		else:
-			# Use base prior
-			mean, std, w = base_mean, base_std, 0.
+			mean, std = math.interp_dist(mean, std, pi_mean, pi_std, step,
+				self.cfg.constraint_start_step, self.cfg.constraint_final_step)
 
 		# Optimize with MPPI
 		action, out_mean, out_std = self.mppi(z, pi_actions, task, mean, std)
@@ -268,7 +253,33 @@ class TDMPC2(torch.nn.Module):
 			action = (action + out_std * torch.randn_like(action)).clamp(-1, 1)
 
 		return action
+	
+	def _pi_loss(self, zs, action, task):
+		"""Compute the policy loss."""
+		pi_action, info = self.model.pi(zs, task)
+
+		# Policy prior loss
+		pi_prior_loss = (math.masked_bc_per_timestep(pi_action[:-1], action, task, self.model._action_masks) \
+				   * self.rho[:-1, None]).sum(0)
+
+		# Normalized Q-loss
+		qs = self.model.Q(zs, pi_action, task, return_type='avg')
+		scaled_qs = self.scale(qs)
+		maxq_loss = ((-self.cfg.entropy_coef*info["scaled_entropy"] - scaled_qs) * self.rho[:, None, None]).sum(dim=(0,2))
 		
+		# Compute total policy loss
+		pi_loss = (pi_prior_loss + maxq_loss).mean()
+
+		info = TensorDict({
+			"pi_prior_loss": pi_prior_loss.mean(),
+			"pi_loss": pi_loss,
+			"pi_entropy": info["entropy"],
+			"pi_scaled_entropy": info["scaled_entropy"],
+			"pi_std": info["log_std"].exp().mean(),
+			"pi_max_std": info["log_std"].exp().max(),
+		})
+		return pi_loss, qs[0].detach(), info
+	
 	def update_pi(self, zs, action, task):
 		"""
 		Update policy using a sequence of latent states.
@@ -282,39 +293,25 @@ class TDMPC2(torch.nn.Module):
 		"""
 		self.model._Qs.track_grad(False)
 
-		pi_action, info = self.model.pi(zs, task)
+		# Compute policy loss
+		pi_loss, qs, info = self.pi_loss(zs, action, task)
 
-		# Policy prior loss
-		pi_prior_loss = (math.masked_bc_per_timestep(pi_action[:-1], action, task, self.model._action_masks) \
-				   * self.rho[:-1, None]).sum(0)
-
-		# Normalized Q-loss
-		qs = self.model.Q(zs, pi_action, task, return_type='avg')
+		# Update running statistics
 		with torch.no_grad():
-			self.scale.update(qs[0])  # local update
+			self.scale.update(qs)  # local update
 			if torch.distributed.is_initialized():
 				torch.distributed.all_reduce(self.scale.value, op=torch.distributed.ReduceOp.SUM)
 				self.scale.value.div_(self.cfg.world_size)
-		qs = self.scale(qs)
-		maxq_loss = ((-self.cfg.entropy_coef*info["scaled_entropy"] - qs) * self.rho[:, None, None]).sum(dim=(0,2))
 		
-		# Compute total policy loss
-		pi_loss = (pi_prior_loss + maxq_loss).mean()
-		
+		# Update policy
 		pi_loss.backward()
 		pi_grad_norm = torch.nn.utils.clip_grad_norm_(self.model._pi.parameters(), self.cfg.grad_clip_norm)
 		self.pi_optim.step()
 		self.pi_optim.zero_grad(set_to_none=True)
 		self.model._Qs.track_grad(True)
 
-		info = TensorDict({
-			"pi_prior_loss": pi_prior_loss.mean(),
-			"pi_loss": pi_loss,
+		info.update({
 			"pi_grad_norm": pi_grad_norm,
-			"pi_entropy": info["entropy"],
-			"pi_scaled_entropy": info["scaled_entropy"],
-			"pi_std": info["log_std"].exp().mean(),
-			"pi_max_std": info["log_std"].exp().max(),
 			"pi_scale": self.scale.value,
 		})
 		return info
@@ -435,8 +432,8 @@ class TDMPC2(torch.nn.Module):
 		# Update target Q-functions
 		self.model.soft_update_target_Q()
 
+		# Max-Q policy update
 		if self.maxq_pi:
-			# Max-Q policy update
 			pi_info = self.update_pi(zs, action, task[:1])
 			info.update(pi_info)
 		
