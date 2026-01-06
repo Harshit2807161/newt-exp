@@ -83,18 +83,29 @@ class TDMPC2(torch.nn.Module):
 		Args:
 			fp (str): Filepath to load state dict from.
 		"""
-		state_dict = torch.load(fp, map_location=torch.get_default_device(), weights_only=False)
-		state_dict = state_dict["model"] if "model" in state_dict else state_dict
-		
+		full_state_dict = torch.load(fp, map_location=torch.get_default_device(), weights_only=False)
+
+		# Load the model state
+		model_state_dict = full_state_dict["model"] if "model" in full_state_dict else full_state_dict
+
 		# Retain task_emb and action_masks if finetuning
 		if self.cfg.finetune:
-			prefix = "module." if "module._task_emb.weight" in state_dict else ""
-			state_dict[prefix+"_task_emb.weight"] = self.model._task_emb.weight
-			state_dict[prefix+"_action_masks"] = self.model._action_masks
+			prefix = "module." if "module._task_emb.weight" in model_state_dict else ""
+			model_state_dict[prefix+"_task_emb.weight"] = self.model._task_emb.weight
+			model_state_dict[prefix+"_action_masks"] = self.model._action_masks
 
-		state_dict = api_model_conversion(self.model.state_dict(), state_dict)
-		self.model.load_state_dict(state_dict)
+		model_state_dict = api_model_conversion(self.model.state_dict(), model_state_dict)
+		self.model.load_state_dict(model_state_dict)
 
+		# *** ADD THIS PART ***
+		# Load optimizer and scale if they exist in the checkpoint
+		if "optim" in full_state_dict:
+			self.optim.load_state_dict(full_state_dict["optim"])
+		if "pi_optim" in full_state_dict:
+			self.pi_optim.load_state_dict(full_state_dict["pi_optim"])
+		if "scale" in full_state_dict:
+			self.scale.load_state_dict(full_state_dict["scale"])
+			
 	@torch.no_grad()
 	def _pi(self, obs, task=None):
 		"""
@@ -131,12 +142,12 @@ class TDMPC2(torch.nn.Module):
 		if mpc:
 			if t0.device != self.device:
 				t0 = t0.to(self.device, non_blocking=True)
-			action = self.plan(obs, t0=t0, step=step, eval_mode=eval_mode, task=task)
+			action, mean, std = self.plan(obs, t0=t0, step=step, eval_mode=eval_mode, task=task)
 		else:
 			action, info = self.pi(obs, task)
 			if eval_mode:
 				action = info["mean"]
-		return action.cpu()
+		return action.cpu(), mean, std
 	
 	@torch.no_grad()
 	def _estimate_value(self, z, actions, task):
@@ -212,7 +223,6 @@ class TDMPC2(torch.nn.Module):
 			index=rand_idx[:, None, None, None].expand(-1, self.cfg.horizon, 1, self.cfg.action_dim)
 		).squeeze(2)
 		action, std_out = selected_actions[:, 0], std[:, 0]
-
 		return action.clamp(-1, 1), mean, std_out
 
 	@torch.no_grad()
@@ -238,7 +248,7 @@ class TDMPC2(torch.nn.Module):
 		shifted = torch.cat([self._prev_mean[:, 1:], torch.zeros_like(self._prev_mean[:, :1])], dim=1)
 		mean = torch.where(t0.view(self._prev_mean.shape[0], 1, 1), torch.zeros_like(shifted), shifted)
 		std = torch.full((self.cfg.num_envs, self.cfg.horizon, self.cfg.action_dim), self.cfg.max_std, device=self.device)
-
+		
 		if self.cfg.constrained_planning:
 			# Init planning with policy statistics
 			pi_mean = pi_actions.mean(2)
@@ -249,10 +259,11 @@ class TDMPC2(torch.nn.Module):
 		# Optimize with MPPI
 		action, out_mean, out_std = self.mppi(z, pi_actions, task, mean, std)
 		self._prev_mean = out_mean.clone()
+		# Denoised action?
 		if not eval_mode:
 			action = (action + out_std * torch.randn_like(action)).clamp(-1, 1)
 
-		return action
+		return action, out_mean, out_std
 	
 	def _pi_loss(self, zs, action, task):
 		"""Compute the policy loss."""
@@ -265,8 +276,9 @@ class TDMPC2(torch.nn.Module):
 		# Normalized Q-loss
 		qs = self.model.Q(zs, pi_action, task, return_type='avg')
 		scaled_qs = self.scale(qs)
+
 		maxq_loss = ((-self.cfg.entropy_coef*info["scaled_entropy"] - scaled_qs) * self.rho[:, None, None]).sum(dim=(0,2))
-		
+
 		# Compute total policy loss
 		pi_loss = (pi_prior_loss + maxq_loss).mean()
 
@@ -294,7 +306,13 @@ class TDMPC2(torch.nn.Module):
 		self.model._Qs.track_grad(False)
 
 		# Compute policy loss
-		pi_loss, qs, info = self.pi_loss(zs, action, task)
+		pi_loss, qs, info = self.pi_loss(zs, action, task)		
+		# Update policy
+		pi_loss.backward()
+		pi_grad_norm = torch.nn.utils.clip_grad_norm_(self.model._pi.parameters(), self.cfg.grad_clip_norm)
+		self.pi_optim.step()
+		self.pi_optim.zero_grad(set_to_none=True)
+		self.model._Qs.track_grad(True)
 
 		# Update running statistics
 		with torch.no_grad():
@@ -302,13 +320,8 @@ class TDMPC2(torch.nn.Module):
 			if torch.distributed.is_initialized():
 				torch.distributed.all_reduce(self.scale.value, op=torch.distributed.ReduceOp.SUM)
 				self.scale.value.div_(self.cfg.world_size)
-		
-		# Update policy
-		pi_loss.backward()
-		pi_grad_norm = torch.nn.utils.clip_grad_norm_(self.model._pi.parameters(), self.cfg.grad_clip_norm)
-		self.pi_optim.step()
-		self.pi_optim.zero_grad(set_to_none=True)
-		self.model._Qs.track_grad(True)
+				# self.scale.value = self.scale.value / self.cfg.world_size
+
 
 		info.update({
 			"pi_grad_norm": pi_grad_norm,

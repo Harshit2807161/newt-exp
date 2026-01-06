@@ -181,7 +181,7 @@ class MultiWarmupConstantLR:
 	def current_lrs(self):
 		return [[pg["lr"] for pg in opt.param_groups] for opt in self.optimizers]
 
-	def step(self, step: int | None = None):
+	def step(self, step: int):
 		"""Step all schedulers. Call at the *start* of your iteration."""
 		if step is None:
 			for sched in self.schedulers:

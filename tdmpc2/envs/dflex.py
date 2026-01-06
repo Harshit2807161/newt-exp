@@ -44,6 +44,8 @@ class dFlexWrapper(gym.Wrapper):
 	def reset(self, **kwargs):
 		self._cumulative_reward = 0
 		obs = self._np(self.env.reset())
+		print(obs,type(obs))
+		print(self._extract_info({}))
 		return obs, self._extract_info({})
 
 	def step(self, action):

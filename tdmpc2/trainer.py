@@ -62,8 +62,8 @@ class Trainer():
 	def eval(self):
 		"""Evaluate agent and aggregate all completed episodes per unique task name."""
 		task_results = defaultdict(empty_metrics)
-
 		obs, info = self.env.reset()
+		# print(obs,type(obs),obs.shape)
 		episode_reward = torch.zeros(self.cfg.num_envs)
 		episode_len = torch.zeros(self.cfg.num_envs)
 		episodes_completed = torch.zeros(self.cfg.num_envs, dtype=torch.int32)
@@ -72,15 +72,16 @@ class Trainer():
 			self.logger.video.init(self.env, enabled=self.cfg.rank==0)
 
 		while (episodes_completed < self.cfg.eval_episodes).any():
-			use_mpc = self._step > 0 or self.cfg.finetune
+			# use_mpc = self._step >= 0 or self.cfg.finetune
+			use_mpc = True
 			torch.compiler.cudagraph_mark_step_begin()
-			action, _ = self.agent(obs, t0=episode_len==0, step=self._step, eval_mode=True, task=self._tasks, mpc=use_mpc)
+			action, mean, std = self.agent(obs, t0=episode_len==0, step=self._step, eval_mode=True, task=self._tasks, mpc=use_mpc)
 			obs, reward, terminated, truncated, info = self.env.step(action)
-
 			done = terminated | truncated
 			episode_reward += reward
 			episode_len += 1
-
+			if(episode_len.any()>20):
+				raise NotImplementedError
 			if 'final_info' in info:
 				for i in range(self.cfg.num_envs):
 					if done[i]:
@@ -90,7 +91,7 @@ class Trainer():
 						task_results[task_name]['reward'].append(episode_reward[i].item())
 						task_results[task_name]['length'].append(episode_len[i].item())
 						task_results[task_name]['success'].append(info['final_info']['success'][i].item())
-						task_results[task_name]['score'].append(info['final_info']['score'][i].item())
+						# task_results[task_name]['score'].append(info['final_info']['score'][i].item())
 
 						episode_reward[i] = 0.0
 						episode_len[i] = 0.0
@@ -129,7 +130,7 @@ class Trainer():
 			results[f'episode_reward+{task_name}'] = sum(metrics['reward']) / n
 			results[f'episode_length+{task_name}'] = sum(metrics['length']) / n
 			results[f'episode_success+{task_name}'] = sum(metrics['success']) / n
-			results[f'episode_score+{task_name}'] = sum(metrics['score']) / n
+			# results[f'episode_score+{task_name}'] = sum(metrics['score']) / n
 
 		# Compute unweighted averages *across tasks*
 		num_tasks = len(task_results)
@@ -142,9 +143,9 @@ class Trainer():
 		results['episode_success'] = sum(
 			sum(m['success']) / len(m['success']) for m in task_results.values()
 		) / num_tasks
-		results['episode_score'] = sum(
-			sum(m['score']) / len(m['score']) for m in task_results.values()
-		) / num_tasks
+		# results['episode_score'] = sum(
+		# 	sum(m['score']) / len(m['score']) for m in task_results.values()
+		# ) / num_tasks
 
 		return results
 
@@ -204,7 +205,7 @@ class Trainer():
 			pretrain_metrics.update({
 				'step': 0,
 				'elapsed_time': time() - self._start_time,
-			})
+			}) 
 			self.agent.maxq_pi = True
 			self.agent.cfg.prior_coef = self.cfg.prior_coef
 			print(f'Set prior_coef to {self.agent.cfg.prior_coef} after pretraining.')
@@ -239,23 +240,35 @@ class Trainer():
 				self._tds[ep_len] = self.to_td(obs)
 
 			# Collect experience
-			if self.cfg.finetune:
-				torch.compiler.cudagraph_mark_step_begin()
-				action = self.agent(obs, t0=done, step=self._step, task=self._tasks, mpc=True)
-			elif use_demos and self.cfg.demo_steps > 0:
-				use_mpc = self._step >= self.cfg.seeding_coef * self._update_freq
-				torch.compiler.cudagraph_mark_step_begin()
-				action = self.agent(obs, t0=done, step=self._step, task=self._tasks, mpc=use_mpc)
-			elif self._step >= self.cfg.seeding_coef * self._update_freq:
-				torch.compiler.cudagraph_mark_step_begin()
-				action = self.agent(obs, t0=done, step=self._step, task=self._tasks)
-			else:
-				action = self.env.rand_act(), None
+			# if self.cfg.finetune:
+			# 	torch.compiler.cudagraph_mark_step_begin()
+			# 	action = self.agent(obs, t0=done, step=self._step, task=self._tasks, mpc=True)
+			# elif use_demos and self.cfg.demo_steps > 0:
+			# 	use_mpc = self._step >= self.cfg.seeding_coef * self._update_freq
+			# 	torch.compiler.cudagraph_mark_step_begin()
+			# 	action = self.agent(obs, t0=done, step=self._step, task=self._tasks, mpc=use_mpc)
+			# elif self._step >= self.cfg.seeding_coef * self._update_freq:
+			# 	torch.compiler.cudagraph_mark_step_begin()
+			# 	action = self.agent(obs, t0=done, step=self._step, task=self._tasks)
+			# else:
+			# 	# action = self.env.rand_act(), None
+			# 	action = self.env.rand_act()
 
+			# use_mpc = self._step >= self.cfg.seeding_coef * self._update_freq
+			# use_agent = self.cfg.finetune or (use_demos and self.cfg.demo_steps > 0) or use_mpc
+			use_mpc = True
+			use_agent = True			
+			if use_agent:
+				torch.compiler.cudagraph_mark_step_begin()
+				action, mean, std = self.agent(obs, t0=done, step=self._step, task=self._tasks, mpc=use_mpc)
+			else:
+				action = self.env.rand_act()
+			# print(action)
 			obs, reward, terminated, truncated, info = self.env.step(action)
 			assert not terminated.any(), \
 				f'Unexpected termination signal received.'
 			ep_reward += reward
+
 			ep_len += 1
 			done = terminated | truncated
 			self._step += self.cfg.num_envs * self.cfg.world_size
@@ -264,24 +277,27 @@ class Trainer():
 			_obs = obs.clone()
 			if 'final_observation' in info:
 				_obs[done] = info['final_observation']
-			td = self.to_td(_obs, action, reward, terminated)
+			td = self.to_td(_obs, action, mean, std, reward, terminated)
+			# print(td,type(td))
 			self._tds[ep_len] = td
 			if done.any():
 				max_ep_len = ep_len.max()
+				# print("TR: ",ep_reward)
+				# print("first done ep lens: ",ep_len)
 
 				for i in range(self.cfg.num_envs):
 					if done[i]:
-						assert ep_len[i] == self._episode_lengths[i], \
-							f'Episode length {ep_len[i]} does not match expected length {self._episode_lengths[i]}.'
+						assert ep_len[i] == self._episode_lengths[0], \
+							f'Episode length {ep_len[i]} does not match expected length {self._episode_lengths[0]}.'
 
 						# Add to buffer
 						_td = self._tds[:ep_len[i]+1, i].unsqueeze(0)
-						self.buffer.add(_td, self.cfg.world_size, self.cfg.rank)
+						self.buffer.add(_td, mean, std, self.cfg.world_size, self.cfg.rank)
 
 						# Save metrics
 						train_metrics['episode_reward'].append(ep_reward[i].item())
 						train_metrics['episode_success'].append(info['final_info']['success'][i].item())
-						train_metrics['episode_score'].append(info['final_info']['score'][i].item())
+						# train_metrics['episode_score'].append(info['final_info']['score'][i].item())
 						train_metrics['episode_length'].append(ep_len[i].item())
 						train_metrics['episode_terminated'].append(terminated[i].item())
 

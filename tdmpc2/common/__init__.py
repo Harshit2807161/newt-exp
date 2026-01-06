@@ -92,6 +92,92 @@ TASK_SET = {
 		'atari-road-runner', 'atari-robotank', 'atari-seaquest', 'atari-space-invaders', 'atari-tutankham',
 		'atari-upndown', 'atari-yars-revenge',
 	],
+	'myo-soccer': [  # 27 tasks
+	'myoChallengeSoccerP1-v0',
+	# 'myoChallengeSoccerP2-v0'
+	],
+	'myo-soccer-phase': [  # 27 tasks
+	'myoChallengeSoccerP1-v0',
+	# 'myoChallengeSoccerP2-v0'
+	],
+	'myo-soccer-mult': [  # 27 tasks
+	'myoChallengeSoccerP1-v0',
+	# 'myoChallengeSoccerP2-v0'
+	],
+	'myo-soccer-mult-new':[  # 27 tasks
+	'myoChallengeSoccerP1-v0',
+	# 'myoChallengeSoccerP2-v0'
+	],
+	'myo-soccer-mult-new2':[  # 27 tasks
+	'myoChallengeSoccerP1-v0',
+	# 'myoChallengeSoccerP2-v0'
+	],
+	'myo-soccer-mult-newold':[  # 27 tasks
+	'myoChallengeSoccerP1-v0',
+	# 'myoChallengeSoccerP2-v0'
+	],
+	'myo-soccer-mult-control-fin':[  # 27 tasks
+	'myoChallengeSoccerP1-v0',
+	# 'myoChallengeSoccerP2-v0'
+	],
+	'last':[  # 27 tasks
+	'myoChallengeSoccerP1-v0',
+	# 'myoChallengeSoccerP2-v0'
+	],
+	'last2':[  # 27 tasks
+	'myoChallengeSoccerP1-v0',
+	# 'myoChallengeSoccerP2-v0'
+	],
+	'last3':[  # 27 tasks
+	'myoChallengeSoccerP1-v0',
+	# 'myoChallengeSoccerP2-v0'
+	],
+	'last4':[  # 27 tasks
+	'myoChallengeSoccerP1-v0',
+	# 'myoChallengeSoccerP2-v0'
+	],
+	'with-ball-height':[  # 27 tasks
+	'myoChallengeSoccerP1-v0',
+	# 'myoChallengeSoccerP2-v0'
+	],
+	'with-ball-height2':[  # 27 tasks
+	'myoChallengeSoccerP1-v0',
+	# 'myoChallengeSoccerP2-v0'
+	],
+	'myo-soccer-mult-control-fin2':[  # 27 tasks
+	'myoChallengeSoccerP1-v0',
+	# 'myoChallengeSoccerP2-v0'
+	],
+	'myo-soccer-mult-control-fin3':[  # 27 tasks
+	'myoChallengeSoccerP1-v0',
+	# 'myoChallengeSoccerP2-v0'
+	],
+	'myo-soccer-mult-control':[  # 27 tasks
+	'myoChallengeSoccerP1-v0',
+	# 'myoChallengeSoccerP2-v0'
+	],
+	'myo-soccer-mult-fin':[  # 27 tasks
+	'myoChallengeSoccerP1-v0',
+	# 'myoChallengeSoccerP2-v0'
+	],
+	'myo-soccer-mult-fin2':[  # 27 tasks
+	'myoChallengeSoccerP1-v0',
+	# 'myoChallengeSoccerP2-v0'
+	],
+	'myo-soccer-mult-fin3':[  # 27 tasks
+	'myoChallengeSoccerP1-v0',
+	# 'myoChallengeSoccerP2-v0'
+	],
+	"myo-soccer-mult-red" :  [  # 27 tasks
+	'myoChallengeSoccerP1-v0',
+	# 'myoChallengeSoccerP2-v0'
+	],
+	"myo-soccer-phase-red":  [  # 27 tasks
+	'myoChallengeSoccerP1-v0',
+	# 'myoChallengeSoccerP2-v0'
+	],
+	'dog-run':['dog-run',],
+	'walker-run':['walker-run',],
 	'soup': [  # 200 tasks in total
 		# dmcontrol (21 tasks)
 		'walker-stand', 'walker-walk', 'walker-run', 'cheetah-run', 'reacher-easy',

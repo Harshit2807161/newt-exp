@@ -3,7 +3,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Any
 
-import json
+# torch.Size([1, 251]) torch.Size([10, 3, 104]) torch.Size([10, 104])
+
+# import json
 import hydra
 from termcolor import colored
 from omegaconf import OmegaConf
@@ -17,22 +19,23 @@ class Config:
 	"""
 	Config for experiments.
 	"""
-
+	
 	# environment
-	task: str = "soup"
+	task: str = "humanoid-walk"
 	obs: str = "state"
+	max_episode_steps: int = 250
 	episodic: bool = False
 	num_envs: int = 10
 	env_mode: str = "async"
 	tasks_fp: str = "/data/nihansen/code/tdmpc25/data/tasks.json"
 
 	# evaluation
-	checkpoint: Optional[str] = None
-	eval_episodes: int = 2
+	checkpoint: Optional[str] = ""
+	eval_episodes: int = 10
 	eval_freq: Optional[int] = None
 
 	# training
-	steps: int = 100_000_000
+	steps: int = 5_000_000
 	batch_size: int = 1024
 	utd: float = 0.075
 	reward_coef: float = 0.1
@@ -47,16 +50,20 @@ class Config:
 	discount_denom: int = 5
 	discount_min: float = 0.95
 	discount_max: float = 0.995
-	buffer_size: int = 10_000_000
-	use_demos: bool = True
+	buffer_size: int = 2_000_000
+	use_demos: bool = False       # CHANGED TO FALSE FROM TRUE
 	no_demo_buffer: bool = False
 	demo_steps: int = 200_000
 	lr_schedule: Optional[str] = None
 	warmup_steps: int = 5_000
-	seeding_coef: int = 5
+	seeding_coef: int = 1
 	exp_name: str = "default"
 	finetune: bool = False
 
+	stand_height: float = 1.61 # 1.6534 # 1.73
+	move_speed: float = 1
+	reward_type: Optional[str] = None
+	
 	# planning
 	mpc: bool = True
 	iterations: int = 6
@@ -82,19 +89,19 @@ class Config:
 	vmax: float = +10.0
 
 	# architecture
-	model_size: Optional[str] = None
+	model_size: Optional[str] = 'B'
 	num_channels: int = 32
-	num_enc_layers: int = 3
-	enc_dim: int = 1024
-	mlp_dim: int = 1024
+	num_enc_layers: int = 3    # DEFAULT 2 IN TDM(PC)^2
+	enc_dim: int = 1024        # DEFAULT 512 IN TDM(PC)^2
+	mlp_dim: int = 1024        # DEFAULT 512 IN TDM(PC)^2
 	latent_dim: int = 512
-	task_dim: int = 512
+	task_dim: int = 512        # DEFAULT 96 IN TDM(PC)^2
 	num_q: int = 5
 	simnorm_dim: int = 8
 
 	# logging
-	wandb_project: str = "tdmpc3"
-	wandb_entity: str = "nicklashansen"
+	wandb_project: str = "humanoid-walk-tdmpc2"
+	wandb_entity: str = "heysup-uc-san-diego"
 	enable_wandb: bool = True
 
 	# misc
@@ -103,12 +110,12 @@ class Config:
 	world_size: int = 1
 	port: Optional[str] = None
 	compile: bool = True
-	save_video: bool = False
+	save_video: bool = True
 	render_size: int = 224
 	save_agent: bool = True
 	save_freq: Optional[int] = None
 	save_buffer: bool = False
-	data_dir: str = "/data/nihansen/code/tdmpc25/data"
+	data_dir: str = ""
 	seed: int = 1
 
 	# convenience (filled at runtime)
@@ -162,11 +169,12 @@ def parse_cfg(cfg):
 		cfg.num_envs = cfg.num_tasks
 		print(colored(f'Number of tasks in soup: {cfg.num_global_tasks}', 'green', attrs=['bold']))
 	cfg.eval_freq = 20 * 500 * cfg.num_envs
-	cfg.save_freq = 5 * cfg.eval_freq
-
+	cfg.save_freq = 10 * cfg.eval_freq
 	# Load task embeddings
-	with open(cfg.tasks_fp, "r") as f:
-		task_info = json.load(f)
+	# with open(cfg.tasks_fp, "r") as f:
+	# 	task_info = json.load(f)
+	task_info = {}
+	task_info["humanoid-walk"] = {'text_embedding':"Stand and Walk","max_episode_steps":250,"action_dim":21}
 	cfg.task_embeddings = []
 	cfg.episode_lengths = []
 	cfg.discounts = []

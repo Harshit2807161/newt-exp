@@ -8,9 +8,8 @@ from tensordict import TensorDict
 
 from envs.wrappers.embedding import EmbeddingWrapper
 
-
-MAX_OBS_DIM = 128
-MAX_ACTION_DIM = 16
+MAX_OBS_DIM = 1314
+MAX_ACTION_DIM = 104
 
 
 class VecWrapper(gym.Wrapper):
@@ -22,6 +21,7 @@ class VecWrapper(gym.Wrapper):
 		super().__init__(env)
 		self.orig_observation_space = env.observation_space
 		self.orig_action_space = env.action_space
+		# print(self.orig_action_space.shape[0])
 		if isinstance(env.observation_space, gym.spaces.Dict):  # State + RGB
 			self.observation_space['state'] = gym.spaces.Box(
 				low=-np.inf, high=np.inf, shape=(MAX_OBS_DIM,), dtype=np.float32)
@@ -131,6 +131,10 @@ class VectorizedMultitaskWrapper(gym.Wrapper):
 			info['final_observation'] = torch.stack([np_to_torch(d) for d in info['final_observation'] if d is not None])
 			if self.cfg.save_video and self.cfg.get('num_demos', 0) > 0:
 				info['final_frame'] = torch.stack([torch.from_numpy(d['frame']) for d in info['final_info'] if d is not None])
+			# print(info['final_observation'])
+			# for key, value in info.items():
+			# 	print(f"{key}: {type(value)}")
+			# print(info['final_info'])
 			keys = next(d.keys() for d in info['final_info'] if d is not None)
 			pad = lambda vals: torch.from_numpy(
 				np.stack([np.asarray(v, dtype=np.float32) if v is not None
@@ -143,19 +147,33 @@ class VectorizedMultitaskWrapper(gym.Wrapper):
 		return info
 
 	def step(self, action):
-		obs, reward, terminated, truncated, info = self.env.step(action.numpy())
+		if isinstance(action, tuple):
+			action = action[0]  # extract the tensor
+		if isinstance(action, torch.Tensor):
+			action = action.cpu().numpy()
+		obs, reward, terminated, truncated, info = self.env.step(action)
 		return self._preprocess_obs(obs), \
 			   torch.tensor(reward, dtype=torch.float32), \
 			   torch.tensor(terminated, dtype=torch.bool), \
 			   torch.tensor(truncated, dtype=torch.bool), \
 			   self._preprocess_info(info)
 	
+	# def render(self, *args, **kwargs):
+	# 	frames = []
+	# 	for env in self.env.envs:
+	# 		frame = env.render(*args, **kwargs)
+	# 		if frame is not None:
+	# 			frames.append(torch.from_numpy(frame))
+	# 	return torch.cat(frames, dim=1) if len(frames) > 0 else None
+
 	def render(self, *args, **kwargs):
-		frames = []
-		for env in self.env.envs:
-			frame = env.render(*args, **kwargs)
-			if frame is not None:
-				frames.append(torch.from_numpy(frame))
+		# Ask each async worker env to render and return its frame
+		frames = self.env.call("render", *args, **kwargs)
+
+		# Filter out None values (some envs might not render)
+		frames = [torch.from_numpy(f) for f in frames if f is not None]
+
+		# Concatenate along width if any frames exist
 		return torch.cat(frames, dim=1) if len(frames) > 0 else None
 
 

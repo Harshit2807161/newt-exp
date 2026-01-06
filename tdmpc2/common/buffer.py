@@ -60,7 +60,7 @@ class Buffer:
 			storage=self._storage,
 			sampler=self._sampler,
 			pin_memory=False,
-			prefetch=None if self._multiproc else 8,
+			prefetch=None if self._multiproc else 0,
 			batch_size=self._sample_size,
 			shared=self._multiproc,
 			transform=make_transform(self._horizon),
@@ -127,9 +127,10 @@ class Buffer:
 		"""Return the next episode ID to be used (unique across ranks)."""
 		return self._num_demos + self._num_eps * world_size + rank
 
-	def add(self, td, world_size=1, rank=0):
+	def add(self, td, mean, std, world_size=1, rank=0):
 		"""Add an episode to the buffer."""
 		num_new_eps = td.shape[0]
+		print(td.shape, mean.shape, std.shape)
 		assert num_new_eps == 1, "Expected a single episode to be added at a time. Use `load` for multiple episodes."
 		if self._num_eps == 0 and rank == 0:
 			self.print_requirements(td[0])

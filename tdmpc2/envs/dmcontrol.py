@@ -64,7 +64,10 @@ class DMControlWrapper:
 	
 	def reset(self):
 		self._cumulative_reward = 0
-		return self._obs_to_array(self.env.reset().observation), self.info
+		obs = self._obs_to_array(self.env.reset().observation)
+		# print(obs,type(obs),obs.shape)
+		# print(self.info,type(self.info))
+		return obs, self.info
 
 	def step(self, action):
 		reward = 0
@@ -100,5 +103,5 @@ def make_env(cfg):
 	env = DMControlWrapper(env, domain)
 	if cfg.obs == 'rgb':
 		env = Pixels(env, cfg)
-	env = Timeout(env, max_episode_steps=500)
+	env = Timeout(env, max_episode_steps=250)
 	return env
