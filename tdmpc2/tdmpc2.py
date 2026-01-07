@@ -58,6 +58,7 @@ class TDMPC2(torch.nn.Module):
 		self.mppi = self._maybe_compile(self._mppi)
 		self.pi_loss = self._maybe_compile(self._pi_loss)
 		self.constrained_pi_loss = self._maybe_compile(self._constrained_pi_loss)
+		self.alternate_pc_pi_loss = self._maybe_compile(self._alternate_pc_pi_loss)
 		self.loss_fn = self._maybe_compile(self._loss_fn)
 
 	def _maybe_compile(self, fn):
@@ -250,8 +251,8 @@ class TDMPC2(torch.nn.Module):
 		mean = torch.where(t0.view(self._prev_mean.shape[0], 1, 1), torch.zeros_like(shifted), shifted)
 		std = torch.full((self.cfg.num_envs, self.cfg.horizon, self.cfg.action_dim), self.cfg.max_std, device=self.device)
 		
-		if self.cfg.constrained_planning:
-			# Init planning with policy statistics
+		if self.cfg.constrained_planning == 2:
+			# Init planning with policy statistics (only for TD-M(PC)^2 mode)
 			pi_mean = pi_actions.mean(2)
 			pi_std = pi_actions.std(2).clamp(self.cfg.min_std, self.cfg.max_std)
 			mean, std = math.interp_dist(mean, std, pi_mean, pi_std, step,
@@ -324,6 +325,34 @@ class TDMPC2(torch.nn.Module):
 		})
 		return pi_loss, qs[0].detach(), info
 
+	def _alternate_pc_pi_loss(self, zs, action, task):
+		"""Compute the policy loss with alternate PC mode (simple BC loss)."""
+		pis, info = self.model.pi(zs, task)
+		log_pis = -info["entropy"]
+
+		# Normalized Q-loss
+		qs = self.model.Q(zs, pis, task, return_type='avg')
+		qs = self.scale(qs)
+
+		# Q-loss with entropy
+		q_loss = ((self.cfg.entropy_coef * log_pis - qs).mean(dim=(1, 2)) * self.rho[:-1]).mean()
+
+		# Simple BC prior loss (MSE between policy and action)
+		prior_loss = (((pis - action) ** 2).sum(dim=-1).mean(dim=1) * self.rho[:-1]).mean()
+
+		# Total policy loss
+		pi_loss = q_loss + self.cfg.prior_coef * prior_loss
+
+		info = TensorDict({
+			"pi_prior_loss": prior_loss.mean(),
+			"pi_loss": pi_loss,
+			"pi_entropy": info["entropy"],
+			"pi_scaled_entropy": info["scaled_entropy"],
+			"pi_std": info["log_std"].exp().mean(),
+			"pi_max_std": info["log_std"].exp().max(),
+		})
+		return pi_loss, qs[0].detach(), info
+
 
 	def update_pi(self, zs, action, mu, std, task):
 		"""
@@ -339,8 +368,10 @@ update_pi
 		self.model._Qs.track_grad(False)
 
 		# Compute policy loss
-		if self.cfg.constrained_planning:
+		if self.cfg.constrained_planning == 2:
 			pi_loss, qs, info = self.constrained_pi_loss(zs, action, mu, std, task)
+		elif self.cfg.constrained_planning == 1:
+			pi_loss, qs, info = self.alternate_pc_pi_loss(zs, action, task)
 		else:
 			pi_loss, qs, info = self.pi_loss(zs, action, task)		
 		# Update policy
@@ -483,7 +514,7 @@ update_pi
 
 		# Max-Q policy update
 		if self.maxq_pi:
-			pi_zs = zs[:-1] if self.cfg.constrained_planning else zs
+			pi_zs = zs[:-1] if self.cfg.constrained_planning > 0 else zs
 			pi_info = self.update_pi(pi_zs, action, mu, std, task[:1])
 			info.update(pi_info)
 		

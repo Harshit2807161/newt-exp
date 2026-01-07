@@ -21,7 +21,7 @@ class Config:
 	"""
 	
 	# environment
-	task: str = "humanoidCMU-walk"
+	task: str = "humanoid-walk"
 	obs: str = "state"
 	max_episode_steps: int = 250
 	episodic: bool = False
@@ -74,7 +74,7 @@ class Config:
 	min_std: float = 0.05
 	max_std: float = 2.0
 	temperature: float = 0.5
-	constrained_planning: bool = True
+	constrained_planning: int = 1  # 0: disabled, 1: alternate PC (BC loss), 2: TD-M(PC)^2
 	constraint_start_step: int = 2_000_000
 	constraint_final_step: int = 10_000_000
 
@@ -151,8 +151,10 @@ def parse_cfg(cfg):
 	Parses the experiment config dataclass. Mostly for convenience.
 	"""
 	# Convenience
-	if cfg.constrained_planning:
+	if cfg.constrained_planning == 2:
 		cfg.work_dir = Path(hydra.utils.get_original_cwd()) / 'logs' / cfg.task / str(cfg.seed) / f'{cfg.exp_name}_constrained'
+	elif cfg.constrained_planning == 1:
+		cfg.work_dir = Path(hydra.utils.get_original_cwd()) / 'logs' / cfg.task / str(cfg.seed) / f'{cfg.exp_name}_alternate_pc'
 	else:
 		cfg.work_dir = Path(hydra.utils.get_original_cwd()) / 'logs' / cfg.task / str(cfg.seed) / cfg.exp_name
 	cfg.task_title = cfg.task.replace("-", " ").title()
@@ -179,7 +181,7 @@ def parse_cfg(cfg):
 	# with open(cfg.tasks_fp, "r") as f:
 	# 	task_info = json.load(f)
 	task_info = {}
-	task_info["humanoidCMU-walk"] = {'text_embedding':"Stand and Walk","max_episode_steps":250,"action_dim":56,"discount_factor":0.99}
+	task_info["humanoid-walk"] = {'text_embedding':"Stand and Walk","max_episode_steps":250,"action_dim":21,"discount_factor":0.99}
 	cfg.task_embeddings = []
 	cfg.episode_lengths = []
 	cfg.discounts = []

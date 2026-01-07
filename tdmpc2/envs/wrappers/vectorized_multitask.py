@@ -8,8 +8,8 @@ from tensordict import TensorDict
 
 from envs.wrappers.embedding import EmbeddingWrapper
 
-MAX_OBS_DIM = 137
-MAX_ACTION_DIM = 56
+MAX_OBS_DIM = 67
+MAX_ACTION_DIM = 21
 
 
 class VecWrapper(gym.Wrapper):
