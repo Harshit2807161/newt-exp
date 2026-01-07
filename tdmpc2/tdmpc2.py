@@ -57,6 +57,7 @@ class TDMPC2(torch.nn.Module):
 		self.sample_pi_trajs = self._maybe_compile(self._sample_pi_trajs)
 		self.mppi = self._maybe_compile(self._mppi)
 		self.pi_loss = self._maybe_compile(self._pi_loss)
+		self.constrained_pi_loss = self._maybe_compile(self._constrained_pi_loss)
 		self.loss_fn = self._maybe_compile(self._loss_fn)
 
 	def _maybe_compile(self, fn):
@@ -142,12 +143,12 @@ class TDMPC2(torch.nn.Module):
 		if mpc:
 			if t0.device != self.device:
 				t0 = t0.to(self.device, non_blocking=True)
-			action, mean, std = self.plan(obs, t0=t0, step=step, eval_mode=eval_mode, task=task)
+			action, mu, std = self.plan(obs, t0=t0, step=step, eval_mode=eval_mode, task=task)
 		else:
 			action, info = self.pi(obs, task)
 			if eval_mode:
 				action = info["mean"]
-		return action.cpu(), mean, std
+		return action.cpu(), mu.cpu(), std.cpu()
 	
 	@torch.no_grad()
 	def _estimate_value(self, z, actions, task):
@@ -223,7 +224,7 @@ class TDMPC2(torch.nn.Module):
 			index=rand_idx[:, None, None, None].expand(-1, self.cfg.horizon, 1, self.cfg.action_dim)
 		).squeeze(2)
 		action, std_out = selected_actions[:, 0], std[:, 0]
-		return action.clamp(-1, 1), mean, std_out
+		return action.clamp(-1, 1), action, mean, std_out
 
 	@torch.no_grad()
 	def plan(self, obs, t0, step, eval_mode=False, task=None):
@@ -257,13 +258,13 @@ class TDMPC2(torch.nn.Module):
 				self.cfg.constraint_start_step, self.cfg.constraint_final_step)
 
 		# Optimize with MPPI
-		action, out_mean, out_std = self.mppi(z, pi_actions, task, mean, std)
+		action, unclamped_act, out_mean, out_std = self.mppi(z, pi_actions, task, mean, std)
 		self._prev_mean = out_mean.clone()
 		# Denoised action?
 		if not eval_mode:
 			action = (action + out_std * torch.randn_like(action)).clamp(-1, 1)
 
-		return action, out_mean, out_std
+		return action, unclamped_act, out_std
 	
 	def _pi_loss(self, zs, action, task):
 		"""Compute the policy loss."""
@@ -291,11 +292,52 @@ class TDMPC2(torch.nn.Module):
 			"pi_max_std": info["log_std"].exp().max(),
 		})
 		return pi_loss, qs[0].detach(), info
-	
-	def update_pi(self, zs, action, task):
+
+	def _constrained_pi_loss(self, zs, action, mu, std, task):
+		"""Compute the policy loss."""
+		pi_action, info = self.model.pi(zs, task)
+		log_pis = -info["entropy"]
+		pis = pi_action
+		# Policy prior loss
+		# pi_prior_loss = (math.masked_bc_per_timestep(pi_action[:-1], action, task, self.model._action_masks) \
+		# 		   * self.rho[:-1, None]).sum(0)
+
+		# Normalized Q-loss
+		qs = self.model.Q(zs, pi_action, task, return_type='avg')
+		qs = self.scale(qs)
+		rho = torch.pow(self.cfg.rho, torch.arange(len(qs), device=self.device))
+		# maxq_loss = ((-self.cfg.entropy_coef*info["scaled_entropy"] - scaled_qs) * self.rho[:, None, None]).sum(dim=(0,2))
+		action_dims = None 
+		std = torch.max(std, self.cfg.min_std * torch.ones_like(std))
+		# eps = (pis - mu) / std
+		eps = (pis[:-1] - mu) / std
+		log_pis_prior = math.gaussian_logprob(eps, std.log()).mean(dim=-1)
+		#log_pis_prior = torch.clamp(log_pis_prior, -50000, 0.0)
+
+		log_pis_prior = self.scale(log_pis_prior) if self.scale.value > self.cfg.scale_threshold else torch.zeros_like(log_pis_prior)
+
+		q_loss = ((self.cfg.entropy_coef * log_pis - qs).mean(dim=(1, 2)) * rho).mean()
+		prior_loss = - (log_pis_prior.mean(dim=-1) * rho[:-1]).mean()
+		pi_loss = q_loss + (self.cfg.prior_coef * self.cfg.action_dim / 61) * prior_loss # 61????
+
+		# Compute total policy loss
+		# pi_loss = (pi_prior_loss + maxq_loss).mean()
+
+		info = TensorDict({
+			"pi_prior_loss": prior_loss.mean(),
+			"pi_loss": pi_loss,
+			"pi_entropy": info["entropy"],
+			"pi_scaled_entropy": info["scaled_entropy"],
+			"pi_std": info["log_std"].exp().mean(),
+			"pi_max_std": info["log_std"].exp().max(),
+		})
+		return pi_loss, qs[0].detach(), info
+
+
+	def update_pi(self, zs, action, mu, std, task):
 		"""
 		Update policy using a sequence of latent states.
-
+update_pi
 		Args:
 			zs (torch.Tensor): Sequence of latent states.
 			task (torch.Tensor): Task index (only used for multi-task experiments).
@@ -306,7 +348,10 @@ class TDMPC2(torch.nn.Module):
 		self.model._Qs.track_grad(False)
 
 		# Compute policy loss
-		pi_loss, qs, info = self.pi_loss(zs, action, task)		
+		if self.cfg.constrained_planning:
+			pi_loss, qs, info = self.constrained_pi_loss(zs, action, mu, std, task)
+		else:
+			pi_loss, qs, info = self.pi_loss(zs, action, task)		
 		# Update policy
 		pi_loss.backward()
 		pi_grad_norm = torch.nn.utils.clip_grad_norm_(self.model._pi.parameters(), self.cfg.grad_clip_norm)
@@ -423,7 +468,7 @@ class TDMPC2(torch.nn.Module):
 		Returns:
 			dict: Dictionary of training statistics.
 		"""
-		obs, action, reward, task = buffer.sample(device=self.device)
+		obs, action, mu, std, reward, task = buffer.sample(device=self.device)
 
 		# Prepare for update
 		self.model.train()
@@ -447,7 +492,7 @@ class TDMPC2(torch.nn.Module):
 
 		# Max-Q policy update
 		if self.maxq_pi:
-			pi_info = self.update_pi(zs, action, task[:1])
+			pi_info = self.update_pi(zs, action, mu, std, task[:1])
 			info.update(pi_info)
 		
 		# Return training statistics

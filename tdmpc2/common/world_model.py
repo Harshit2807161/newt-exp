@@ -163,6 +163,7 @@ class WorldModel(nn.Module):
 
 		# Gaussian policy prior
 		mean, log_std = self._pi(z).chunk(2, dim=-1)
+		# print("mean shape:", mean.shape)
 		log_std = math.log_std(log_std, self.log_std_min, self.log_std_dif)
 		eps = torch.randn_like(mean)
 
@@ -174,7 +175,8 @@ class WorldModel(nn.Module):
 		mean = mean * action_mask
 		log_std = log_std * action_mask
 		eps = eps * action_mask
-
+		# print("action_mask shape:", action_mask.shape)
+		# print("mean after mask shape:", mean.shape)
 		action_dims = action_mask.sum(-1, keepdim=True)
 		log_prob = math.gaussian_logprob(eps, log_std)
 
@@ -184,7 +186,9 @@ class WorldModel(nn.Module):
 
 		# Reparameterization trick
 		action = mean + eps * log_std.exp()
+		# print("action before squash shape:", action.shape)
 		mean, action, log_prob = math.squash(mean, action, log_prob)
+		# print("action after squash shape:", action.shape)
 
 		entropy_scale = scaled_log_prob / (log_prob + 1e-8)
 		info = TensorDict({

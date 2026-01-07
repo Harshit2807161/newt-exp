@@ -8,16 +8,18 @@ from torchrl.data.replay_buffers.samplers import SliceSampler
 def make_transform(horizon: int):
 	"""Create a transform for preprocessing during sampling."""
 	def transform(td: TensorDict):
-		td = td.select("obs", "action", "reward", "task", strict=False)
+		td = td.select("obs", "action", "mu", "std", "reward", "task", strict=False)
 		td = td.view(-1, horizon + 1).transpose(0, 1)
 		obs = td.get("obs").contiguous()
 		action = td.get("action")[1:].contiguous()
+		mu = td.get("mu")[1:].contiguous()
+		std = td.get("std")[1:].contiguous()
 		reward = td.get("reward")[1:].unsqueeze(-1).contiguous()
 		task = td.get("task", None)
 		if task is not None:
 			task = task[1:].contiguous()
 
-		return obs, action, reward, task
+		return obs, action, mu, std, reward, task
 
 	return transform
 
@@ -127,10 +129,9 @@ class Buffer:
 		"""Return the next episode ID to be used (unique across ranks)."""
 		return self._num_demos + self._num_eps * world_size + rank
 
-	def add(self, td, mean, std, world_size=1, rank=0):
+	def add(self, td, world_size=1, rank=0):
 		"""Add an episode to the buffer."""
 		num_new_eps = td.shape[0]
-		print(td.shape, mean.shape, std.shape)
 		assert num_new_eps == 1, "Expected a single episode to be added at a time. Use `load` for multiple episodes."
 		if self._num_eps == 0 and rank == 0:
 			self.print_requirements(td[0])
@@ -151,15 +152,17 @@ class Buffer:
 
 		Here we only hop device (pinned -> GPU) and unpack.
 		"""
-		obs, action, reward, task = self._buffer.sample()
+		obs, action, mu, std, reward, task = self._buffer.sample()
 		if obs.device != device:
 			obs = obs.to(device, non_blocking=True)
 			action = action.to(device, non_blocking=True)
+			mu = mu.to(device, non_blocking=True)
+			std = std.to(device, non_blocking=True)
 			reward = reward.to(device, non_blocking=True)
 			if task is not None:
 				task = task.to(device, non_blocking=True)
 
-		return obs, action, reward, task
+		return obs, action, mu, std, reward, task
 
 
 class EnsembleBuffer(Buffer):

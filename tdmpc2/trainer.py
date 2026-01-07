@@ -149,7 +149,7 @@ class Trainer():
 
 		return results
 
-	def to_td(self, obs, action=None, reward=None, terminated=None):
+	def to_td(self, obs, action=None, mu=None, std=None, reward=None, terminated=None):
 		"""Creates a TensorDict for a new episode."""
 		if isinstance(obs, dict):
 			obs = TensorDict(obs, batch_size=(), device='cpu')
@@ -157,6 +157,10 @@ class Trainer():
 			obs = obs.cpu()
 		if action is None:
 			action = torch.full_like(self.env.rand_act(), float('nan'))
+		if mu is None:
+			mu = torch.full_like(action, float("nan"))
+		if std is None:
+			std = torch.full_like(action, float("nan"))
 		if reward is None:
 			reward = torch.tensor(float('nan')).repeat(self.cfg.num_envs)
 		if terminated is None:
@@ -166,6 +170,8 @@ class Trainer():
 		td = TensorDict(
 			obs=obs,
 			action=action,
+			mu=mu,
+        	std=std,
 			reward=reward,
 			terminated=terminated,
 			task=self._tasks,
@@ -260,7 +266,7 @@ class Trainer():
 			use_agent = True			
 			if use_agent:
 				torch.compiler.cudagraph_mark_step_begin()
-				action, mean, std = self.agent(obs, t0=done, step=self._step, task=self._tasks, mpc=use_mpc)
+				action, mu, std = self.agent(obs, t0=done, step=self._step, task=self._tasks, mpc=use_mpc)
 			else:
 				action = self.env.rand_act()
 			# print(action)
@@ -277,7 +283,7 @@ class Trainer():
 			_obs = obs.clone()
 			if 'final_observation' in info:
 				_obs[done] = info['final_observation']
-			td = self.to_td(_obs, action, mean, std, reward, terminated)
+			td = self.to_td(_obs, action, mu, std, reward, terminated)
 			# print(td,type(td))
 			self._tds[ep_len] = td
 			if done.any():
@@ -292,7 +298,7 @@ class Trainer():
 
 						# Add to buffer
 						_td = self._tds[:ep_len[i]+1, i].unsqueeze(0)
-						self.buffer.add(_td, mean, std, self.cfg.world_size, self.cfg.rank)
+						self.buffer.add(_td, self.cfg.world_size, self.cfg.rank)
 
 						# Save metrics
 						train_metrics['episode_reward'].append(ep_reward[i].item())

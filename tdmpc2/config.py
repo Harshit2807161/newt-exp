@@ -30,13 +30,14 @@ class Config:
 	tasks_fp: str = "/data/nihansen/code/tdmpc25/data/tasks.json"
 
 	# evaluation
-	checkpoint: Optional[str] = ""
-	eval_episodes: int = 10
+	checkpoint: Optional[str] = None
+	eval_episodes: int = 2
 	eval_freq: Optional[int] = None
 
 	# training
 	steps: int = 5_000_000
 	batch_size: int = 1024
+	constrained_planning: bool = False
 	utd: float = 0.075
 	reward_coef: float = 0.1
 	value_coef: float = 0.1
@@ -56,7 +57,7 @@ class Config:
 	demo_steps: int = 200_000
 	lr_schedule: Optional[str] = None
 	warmup_steps: int = 5_000
-	seeding_coef: int = 1
+	seeding_coef: int = 5
 	exp_name: str = "default"
 	finetune: bool = False
 
@@ -82,6 +83,8 @@ class Config:
 	log_std_min: float = -10
 	log_std_max: float = 2.0
 	entropy_coef: float = 1e-4
+	scale_threshold: float = 2.0
+
 
 	# critic
 	num_bins: int = 101
@@ -174,7 +177,7 @@ def parse_cfg(cfg):
 	# with open(cfg.tasks_fp, "r") as f:
 	# 	task_info = json.load(f)
 	task_info = {}
-	task_info["humanoid-walk"] = {'text_embedding':"Stand and Walk","max_episode_steps":250,"action_dim":21}
+	task_info["humanoid-walk"] = {'text_embedding':"Stand and Walk","max_episode_steps":250,"action_dim":21,"discount_factor":0.99}
 	cfg.task_embeddings = []
 	cfg.episode_lengths = []
 	cfg.discounts = []
