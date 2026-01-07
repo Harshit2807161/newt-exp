@@ -294,34 +294,25 @@ class TDMPC2(torch.nn.Module):
 		return pi_loss, qs[0].detach(), info
 
 	def _constrained_pi_loss(self, zs, action, mu, std, task):
-		"""Compute the policy loss."""
+		"""Compute the policy loss with TD-M(PC)^2 constraint."""
 		pi_action, info = self.model.pi(zs, task)
 		log_pis = -info["entropy"]
 		pis = pi_action
-		# Policy prior loss
-		# pi_prior_loss = (math.masked_bc_per_timestep(pi_action[:-1], action, task, self.model._action_masks) \
-		# 		   * self.rho[:-1, None]).sum(0)
 
 		# Normalized Q-loss
 		qs = self.model.Q(zs, pi_action, task, return_type='avg')
 		qs = self.scale(qs)
-		rho = torch.pow(self.cfg.rho, torch.arange(len(qs), device=self.device))
-		# maxq_loss = ((-self.cfg.entropy_coef*info["scaled_entropy"] - scaled_qs) * self.rho[:, None, None]).sum(dim=(0,2))
-		action_dims = None 
+
+		# Policy prior loss (constrain policy to match planner distribution)
 		std = torch.max(std, self.cfg.min_std * torch.ones_like(std))
-		# eps = (pis - mu) / std
-		eps = (pis[:-1] - mu) / std
-		log_pis_prior = math.gaussian_logprob(eps, std.log()).mean(dim=-1)
-		#log_pis_prior = torch.clamp(log_pis_prior, -50000, 0.0)
+		eps = (pis - mu) / std
+		log_pis_prior = math.gaussian_logprob_constrained(eps, std.log()).mean(dim=-1)
 
 		log_pis_prior = self.scale(log_pis_prior) if self.scale.value > self.cfg.scale_threshold else torch.zeros_like(log_pis_prior)
 
-		q_loss = ((self.cfg.entropy_coef * log_pis - qs).mean(dim=(1, 2)) * rho).mean()
-		prior_loss = - (log_pis_prior.mean(dim=-1) * rho[:-1]).mean()
-		pi_loss = q_loss + (self.cfg.prior_coef * self.cfg.action_dim / 61) * prior_loss # 61????
-
-		# Compute total policy loss
-		# pi_loss = (pi_prior_loss + maxq_loss).mean()
+		q_loss = ((self.cfg.entropy_coef * log_pis - qs).mean(dim=(1, 2)) * self.rho[:-1]).mean()
+		prior_loss = - (log_pis_prior.mean(dim=-1) * self.rho[:-1]).mean()
+		pi_loss = q_loss + (self.cfg.prior_coef * self.cfg.action_dim / 61) * prior_loss
 
 		info = TensorDict({
 			"pi_prior_loss": prior_loss.mean(),
@@ -492,7 +483,8 @@ update_pi
 
 		# Max-Q policy update
 		if self.maxq_pi:
-			pi_info = self.update_pi(zs, action, mu, std, task[:1])
+			pi_zs = zs[:-1] if self.cfg.constrained_planning else zs
+			pi_info = self.update_pi(pi_zs, action, mu, std, task[:1])
 			info.update(pi_info)
 		
 		# Return training statistics

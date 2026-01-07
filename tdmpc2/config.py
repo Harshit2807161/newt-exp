@@ -21,11 +21,11 @@ class Config:
 	"""
 	
 	# environment
-	task: str = "humanoid-walk"
+	task: str = "humanoidCMU-walk"
 	obs: str = "state"
 	max_episode_steps: int = 250
 	episodic: bool = False
-	num_envs: int = 10
+	num_envs: int = 20
 	env_mode: str = "async"
 	tasks_fp: str = "/data/nihansen/code/tdmpc25/data/tasks.json"
 
@@ -35,9 +35,8 @@ class Config:
 	eval_freq: Optional[int] = None
 
 	# training
-	steps: int = 5_000_000
+	steps: int = 20_000_000
 	batch_size: int = 1024
-	constrained_planning: bool = False
 	utd: float = 0.075
 	reward_coef: float = 0.1
 	value_coef: float = 0.1
@@ -152,7 +151,10 @@ def parse_cfg(cfg):
 	Parses the experiment config dataclass. Mostly for convenience.
 	"""
 	# Convenience
-	cfg.work_dir = Path(hydra.utils.get_original_cwd()) / 'logs' / cfg.task / str(cfg.seed) / cfg.exp_name
+	if cfg.constrained_planning:
+		cfg.work_dir = Path(hydra.utils.get_original_cwd()) / 'logs' / cfg.task / str(cfg.seed) / f'{cfg.exp_name}_constrained'
+	else:
+		cfg.work_dir = Path(hydra.utils.get_original_cwd()) / 'logs' / cfg.task / str(cfg.seed) / cfg.exp_name
 	cfg.task_title = cfg.task.replace("-", " ").title()
 	cfg.bin_size = (cfg.vmax - cfg.vmin) / (cfg.num_bins-1)  # Bin size for discrete regression
 
@@ -172,12 +174,12 @@ def parse_cfg(cfg):
 		cfg.num_envs = cfg.num_tasks
 		print(colored(f'Number of tasks in soup: {cfg.num_global_tasks}', 'green', attrs=['bold']))
 	cfg.eval_freq = 20 * 500 * cfg.num_envs
-	cfg.save_freq = 10 * cfg.eval_freq
+	cfg.save_freq = int(1.25 * cfg.eval_freq)
 	# Load task embeddings
 	# with open(cfg.tasks_fp, "r") as f:
 	# 	task_info = json.load(f)
 	task_info = {}
-	task_info["humanoid-walk"] = {'text_embedding':"Stand and Walk","max_episode_steps":250,"action_dim":21,"discount_factor":0.99}
+	task_info["humanoidCMU-walk"] = {'text_embedding':"Stand and Walk","max_episode_steps":250,"action_dim":56,"discount_factor":0.99}
 	cfg.task_embeddings = []
 	cfg.episode_lengths = []
 	cfg.discounts = []

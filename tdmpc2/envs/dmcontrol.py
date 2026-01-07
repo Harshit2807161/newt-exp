@@ -91,7 +91,7 @@ def make_env(cfg):
 	Adapted from https://github.com/facebookresearch/drqv2
 	"""
 	domain, task = cfg.task.replace('-', '_').split('_', 1)
-	domain = dict(cup='ball_in_cup', pointmass='point_mass').get(domain, domain)
+	domain = dict(cup='ball_in_cup', pointmass='point_mass', humanoidCMU='humanoid_CMU').get(domain, domain)
 	if (domain, task) not in suite.ALL_TASKS:
 		raise ValueError('Unknown task:', task)
 	assert cfg.obs in {'state', 'rgb'}, 'This task only supports state and rgb observations.'

@@ -15,6 +15,23 @@ def log_std(x, low, dif):
 	return low + 0.5 * dif * (torch.tanh(x) + 1)
 
 
+@torch.jit.script
+def _gaussian_residual(eps, log_std):
+    return -0.5 * eps.pow(2) - log_std
+
+
+@torch.jit.script
+def _gaussian_logprob(residual):
+    return residual - 0.5 * torch.log(2 * torch.pi)
+
+
+def gaussian_logprob_constrained(eps, log_std, size=None):
+    """Compute Gaussian log probability."""
+    residual = _gaussian_residual(eps, log_std).sum(-1, keepdim=True)
+    if size is None:
+        size = eps.size(-1)
+    return _gaussian_logprob(residual) * size
+
 def gaussian_logprob(eps, log_std):
 	"""Compute Gaussian log probability."""
 	residual = -0.5 * eps.pow(2) - log_std

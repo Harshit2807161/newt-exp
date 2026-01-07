@@ -4,7 +4,7 @@ os.environ['LAZY_LEGACY_OP'] = '0'
 os.environ["TORCH_DISTRIBUTED_TIMEOUT"] = "1800"
 os.environ['TORCHDYNAMO_INLINE_INBUILT_NN_MODULES'] = "1"
 os.environ['TORCH_LOGS'] = "+recompiles"
-os.environ['CUDA_VISIBLE_DEVICES'] = "7"
+os.environ['CUDA_VISIBLE_DEVICES'] = "2"
 # os.environ['TORCHRL_DISABLE_COMPILE'] = '1'
 import warnings
 warnings.filterwarnings('ignore')
